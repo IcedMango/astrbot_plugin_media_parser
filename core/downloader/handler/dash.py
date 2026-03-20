@@ -15,7 +15,8 @@ async def _download_stream_normal(
     media_url: str,
     output_path: str,
     headers: dict = None,
-    proxy: str = None
+    proxy: str = None,
+    retry_count: int = 0
 ) -> Optional[Dict[str, Any]]:
     """普通流式下载。"""
 
@@ -29,7 +30,8 @@ async def _download_stream_normal(
         file_path_generator=file_path_generator,
         is_video=True,
         headers=headers,
-        proxy=proxy
+        proxy=proxy,
+        max_retries=retry_count
     )
     if not file_path:
         return None
@@ -51,7 +53,8 @@ async def _download_stream(
     media_url: str,
     output_path: str,
     headers: dict = None,
-    proxy: str = None
+    proxy: str = None,
+    retry_count: int = 0
 ) -> Optional[Dict[str, Any]]:
     """根据 range: 前缀决定是否走 Range 下载。"""
     actual_url = media_url
@@ -81,7 +84,8 @@ async def _download_stream(
         media_url=actual_url,
         output_path=output_path,
         headers=headers,
-        proxy=proxy
+        proxy=proxy,
+        retry_count=retry_count
     )
 
 
@@ -145,7 +149,8 @@ async def download_dash_to_cache(
     media_id: str,
     index: int = 0,
     headers: dict = None,
-    proxy: str = None
+    proxy: str = None,
+    retry_count: int = 0
 ) -> Optional[Dict[str, Any]]:
     """下载 DASH 视频并合并到缓存目录。"""
     if not cache_dir or not video_url:
@@ -178,14 +183,16 @@ async def download_dash_to_cache(
                 media_url=video_url,
                 output_path=video_temp_path,
                 headers=headers,
-                proxy=proxy
+                proxy=proxy,
+                retry_count=retry_count
             )
             audio_task = _download_stream(
                 session=session,
                 media_url=audio_url,
                 output_path=audio_temp_path,
                 headers=headers,
-                proxy=proxy
+                proxy=proxy,
+                retry_count=retry_count
             )
             video_result, audio_result = await asyncio.gather(video_task, audio_task)
         else:
@@ -194,7 +201,8 @@ async def download_dash_to_cache(
                 media_url=video_url,
                 output_path=video_temp_path,
                 headers=headers,
-                proxy=proxy
+                proxy=proxy,
+                retry_count=retry_count
             )
 
         if not video_result or not video_result.get("file_path"):
@@ -244,4 +252,3 @@ async def download_dash_to_cache(
         cleanup_file(audio_temp_path)
         cleanup_file(output_path)
         return None
-

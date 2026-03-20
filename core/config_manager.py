@@ -135,6 +135,13 @@ class ConfigManager:
             "max_concurrent_downloads",
             Config.DOWNLOAD_MANAGER_MAX_CONCURRENT
         )
+        self.download_retry_count = self._parse_non_negative_int(
+            download_settings.get(
+                "download_retry_count",
+                Config.DEFAULT_DOWNLOAD_RETRY_COUNT
+            ),
+            Config.DEFAULT_DOWNLOAD_RETRY_COUNT
+        )
         
         if self.pre_download_all_media:
             if not check_cache_dir_available(self.cache_dir):

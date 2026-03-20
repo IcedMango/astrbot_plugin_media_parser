@@ -24,7 +24,8 @@ class M3U8Handler:
         session: aiohttp.ClientSession,
         headers: dict = None,
         proxy: str = None,
-        max_concurrent_segments: int = Config.M3U8_MAX_CONCURRENT_SEGMENTS
+        max_concurrent_segments: int = Config.M3U8_MAX_CONCURRENT_SEGMENTS,
+        max_retries: int = 0
     ):
         """初始化 M3U8 处理器
 
@@ -38,6 +39,41 @@ class M3U8Handler:
         self.headers = headers or {}
         self.proxy = proxy
         self.max_concurrent_segments = max_concurrent_segments
+        self.max_retries = max(0, int(max_retries or 0))
+
+    async def _request_with_retries(self, url: str, read_as: str) -> Optional[object]:
+        """带重试地获取文本或二进制内容。"""
+        total_attempts = self.max_retries + 1
+        last_error = None
+        for attempt in range(1, total_attempts + 1):
+            try:
+                logger.debug(
+                    f"M3U8请求开始: {url}, mode={read_as}, attempt={attempt}/{total_attempts}"
+                )
+                async with self.session.get(
+                    url,
+                    headers=self.headers,
+                    proxy=self.proxy
+                ) as response:
+                    response.raise_for_status()
+                    if read_as == "text":
+                        result = await response.text()
+                    else:
+                        result = await response.read()
+                logger.debug(
+                    f"M3U8请求成功: {url}, mode={read_as}, attempt={attempt}/{total_attempts}"
+                )
+                return result
+            except Exception as e:
+                last_error = e
+                logger.warning(
+                    f"M3U8请求失败: {url}, mode={read_as}, "
+                    f"attempt={attempt}/{total_attempts}, 错误: {e}"
+                )
+                if attempt < total_attempts:
+                    logger.debug(f"M3U8请求准备重试: {url}, 下一次尝试 {attempt + 1}/{total_attempts}")
+        logger.warning(f"M3U8请求最终失败: {url}, 错误: {last_error}")
+        return None
 
     async def fetch_text(self, url: str) -> str:
         """获取文本内容
@@ -48,13 +84,10 @@ class M3U8Handler:
         Returns:
             文本内容
         """
-        async with self.session.get(
-            url,
-            headers=self.headers,
-            proxy=self.proxy
-        ) as response:
-            response.raise_for_status()
-            return await response.text()
+        result = await self._request_with_retries(url, "text")
+        if result is None:
+            raise aiohttp.ClientError(f"获取文本失败: {url}")
+        return result
 
     async def fetch_bytes(self, url: str) -> bytes:
         """获取二进制内容
@@ -65,13 +98,10 @@ class M3U8Handler:
         Returns:
             二进制内容
         """
-        async with self.session.get(
-            url,
-            headers=self.headers,
-            proxy=self.proxy
-        ) as response:
-            response.raise_for_status()
-            return await response.read()
+        result = await self._request_with_retries(url, "bytes")
+        if result is None:
+            raise aiohttp.ClientError(f"获取二进制内容失败: {url}")
+        return result
 
     async def download_file(self, url: str, output_path: str) -> bool:
         """下载文件
@@ -83,21 +113,39 @@ class M3U8Handler:
         Returns:
             下载是否成功
         """
-        try:
-            os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            async with self.session.get(
-                url,
-                headers=self.headers,
-                proxy=self.proxy
-            ) as response:
-                response.raise_for_status()
-                with open(output_path, 'wb') as f:
-                    async for chunk in response.content.iter_chunked(Config.STREAM_DOWNLOAD_CHUNK_SIZE):
-                        f.write(chunk)
-            return True
-        except Exception as e:
-            logger.warning(f"下载文件失败 {url}: {e}")
-            return False
+        total_attempts = self.max_retries + 1
+        last_error = None
+        for attempt in range(1, total_attempts + 1):
+            try:
+                logger.debug(
+                    f"M3U8分片下载开始: {url}, output={output_path}, "
+                    f"attempt={attempt}/{total_attempts}"
+                )
+                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                async with self.session.get(
+                    url,
+                    headers=self.headers,
+                    proxy=self.proxy
+                ) as response:
+                    response.raise_for_status()
+                    with open(output_path, 'wb') as f:
+                        async for chunk in response.content.iter_chunked(Config.STREAM_DOWNLOAD_CHUNK_SIZE):
+                            f.write(chunk)
+                logger.debug(
+                    f"M3U8分片下载成功: {url}, output={output_path}, "
+                    f"attempt={attempt}/{total_attempts}"
+                )
+                return True
+            except Exception as e:
+                last_error = e
+                logger.warning(
+                    f"M3U8分片下载失败: {url}, output={output_path}, "
+                    f"attempt={attempt}/{total_attempts}, 错误: {e}"
+                )
+                if attempt < total_attempts:
+                    logger.debug(f"M3U8分片准备重试: {url}, 下一次尝试 {attempt + 1}/{total_attempts}")
+        logger.warning(f"M3U8分片最终失败: {url}, 错误: {last_error}")
+        return False
 
     async def parse_m3u8(self, url: str) -> Tuple[Optional[str], List[str]]:
         """解析 m3u8 获取 init segment 和分片列表
@@ -392,4 +440,3 @@ class M3U8Handler:
         except Exception as e:
             logger.warning(f"下载 m3u8 到缓存目录失败: {m3u8_url}, 错误: {e}")
             return None
-

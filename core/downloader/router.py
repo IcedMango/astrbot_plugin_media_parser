@@ -71,7 +71,8 @@ async def download_media(
     headers: dict = None,
     proxy: str = None,
     m3u8_handler: Optional[M3U8Handler] = None,
-    use_ffmpeg: bool = True
+    use_ffmpeg: bool = True,
+    retry_count: int = 0
 ) -> Optional[Dict[str, Any]]:
     """下载媒体文件
 
@@ -119,7 +120,8 @@ async def download_media(
             media_id=media_id or 'media',
             index=index,
             headers=headers,
-            proxy=proxy
+            proxy=proxy,
+            retry_count=retry_count
         )
     
     if media_type == 'm3u8':
@@ -130,8 +132,11 @@ async def download_media(
             m3u8_handler = M3U8Handler(
                 session=session,
                 headers=headers,
-                proxy=proxy
+                proxy=proxy,
+                max_retries=retry_count
             )
+        else:
+            m3u8_handler.max_retries = retry_count
         
         return await m3u8_handler.download_m3u8_to_cache(
             m3u8_url=actual_url,
@@ -149,7 +154,8 @@ async def download_media(
             media_id=media_id or 'image',
             index=index,
             headers=headers,
-            proxy=proxy
+            proxy=proxy,
+            retry_count=retry_count
         )
         if file_path:
             return {'file_path': file_path, 'size_mb': None}
@@ -183,5 +189,6 @@ async def download_media(
                 media_id=media_id or 'media',
                 index=index,
                 headers=headers,
-                proxy=proxy
+                proxy=proxy,
+                retry_count=retry_count
             )

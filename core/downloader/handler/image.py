@@ -85,7 +85,8 @@ async def download_image_to_cache(
     media_id: str,
     index: int = 0,
     headers: dict = None,
-    proxy: str = None
+    proxy: str = None,
+    retry_count: int = 0
 ) -> Optional[str]:
     """下载图片到缓存目录或临时文件
 
@@ -119,7 +120,8 @@ async def download_image_to_cache(
             file_path_generator=file_path_generator,
             is_video=False,
             headers=headers,
-            proxy=proxy
+            proxy=proxy,
+            max_retries=retry_count
         )
     else:
         def generate_temp_file_path(content_type: str, url: str) -> str:
@@ -137,7 +139,8 @@ async def download_image_to_cache(
             file_path_generator=generate_temp_file_path,
             is_video=False,
             headers=headers,
-            proxy=proxy
+            proxy=proxy,
+            max_retries=retry_count
         )
     
     if file_path and not _is_supported_image_format(file_path):
@@ -155,4 +158,3 @@ async def download_image_to_cache(
             logger.warning(f"图片格式转换失败，保留原文件: {file_path}")
     
     return file_path
-

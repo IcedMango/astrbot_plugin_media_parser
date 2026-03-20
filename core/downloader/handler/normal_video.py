@@ -19,7 +19,8 @@ async def download_video_to_cache(
     media_id: str,
     index: int = 0,
     headers: dict = None,
-    proxy: str = None
+    proxy: str = None,
+    retry_count: int = 0
 ) -> Optional[Dict[str, Any]]:
     """下载视频到缓存目录
 
@@ -55,7 +56,8 @@ async def download_video_to_cache(
         file_path_generator=file_path_generator,
         is_video=True,
         headers=headers,
-        proxy=proxy
+        proxy=proxy,
+        max_retries=retry_count
     )
     
     if file_path:

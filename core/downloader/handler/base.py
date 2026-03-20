@@ -265,7 +265,8 @@ async def download_media_from_url(
     file_path_generator: Callable[[str, str], str],
     is_video: bool = True,
     headers: dict = None,
-    proxy: str = None
+    proxy: str = None,
+    max_retries: int = 0
 ) -> Tuple[Optional[str], Optional[float]]:
     """通用媒体下载函数，封装公共的下载逻辑
 
@@ -280,42 +281,69 @@ async def download_media_from_url(
     Returns:
         (file_path, size_mb) 元组，失败返回 (None, None)
     """
-    try:
-        request_headers = headers or {}
-        
-        timeout = aiohttp.ClientTimeout(
-            total=Config.VIDEO_DOWNLOAD_TIMEOUT if is_video else Config.IMAGE_DOWNLOAD_TIMEOUT
-        )
-        
-        async with session.get(
-            media_url,
-            headers=request_headers,
-            timeout=timeout,
-            proxy=proxy
-        ) as response:
-            response.raise_for_status()
-            
-            is_valid, content_preview = await validate_media_response(
-                response, media_url, is_video=is_video, allow_read_content=True
-            )
-            if not is_valid:
-                return None, None
-            
-            content_type = response.headers.get('Content-Type', '')
-            size_mb = extract_size_from_headers(response)
-            
-            file_path = file_path_generator(content_type, media_url)
-            
-            if await download_media_stream(response, file_path, content_preview, is_video=is_video):
-                if size_mb is None:
-                    try:
-                        file_size_bytes = os.path.getsize(file_path)
-                        size_mb = file_size_bytes / (1024 * 1024)
-                    except Exception:
-                        pass
-                return os.path.normpath(file_path), size_mb
-            return None, None
-    except Exception as e:
-        logger.warning(f"下载媒体失败: {media_url}, 错误: {e}")
-        return None, None
+    request_headers = headers or {}
+    timeout = aiohttp.ClientTimeout(
+        total=Config.VIDEO_DOWNLOAD_TIMEOUT if is_video else Config.IMAGE_DOWNLOAD_TIMEOUT
+    )
+    total_attempts = max(1, int(max_retries or 0) + 1)
+    last_error = None
 
+    for attempt in range(1, total_attempts + 1):
+        file_path = None
+        try:
+            logger.debug(
+                f"开始下载媒体: {media_url}, is_video={is_video}, "
+                f"attempt={attempt}/{total_attempts}"
+            )
+            async with session.get(
+                media_url,
+                headers=request_headers,
+                timeout=timeout,
+                proxy=proxy
+            ) as response:
+                response.raise_for_status()
+                
+                is_valid, content_preview = await validate_media_response(
+                    response, media_url, is_video=is_video, allow_read_content=True
+                )
+                if not is_valid:
+                    last_error = "媒体响应校验失败"
+                    logger.warning(
+                        f"下载媒体失败: {media_url}, "
+                        f"attempt={attempt}/{total_attempts}, 错误: {last_error}"
+                    )
+                else:
+                    content_type = response.headers.get('Content-Type', '')
+                    size_mb = extract_size_from_headers(response)
+                    
+                    file_path = file_path_generator(content_type, media_url)
+                    
+                    if await download_media_stream(response, file_path, content_preview, is_video=is_video):
+                        if size_mb is None:
+                            try:
+                                file_size_bytes = os.path.getsize(file_path)
+                                size_mb = file_size_bytes / (1024 * 1024)
+                            except Exception:
+                                pass
+                        logger.debug(
+                            f"下载媒体成功: {media_url}, file={os.path.normpath(file_path)}, "
+                            f"size_mb={size_mb}, attempt={attempt}/{total_attempts}"
+                        )
+                        return os.path.normpath(file_path), size_mb
+                    last_error = "媒体流写入失败"
+                    logger.warning(
+                        f"下载媒体失败: {media_url}, "
+                        f"attempt={attempt}/{total_attempts}, 错误: {last_error}"
+                    )
+        except Exception as e:
+            last_error = e
+            logger.warning(
+                f"下载媒体失败: {media_url}, "
+                f"attempt={attempt}/{total_attempts}, 错误: {e}"
+            )
+
+        if attempt < total_attempts:
+            logger.debug(f"下载媒体准备重试: {media_url}, 下一次尝试 {attempt + 1}/{total_attempts}")
+
+    logger.warning(f"下载媒体最终失败: {media_url}, 错误: {last_error}")
+    return None, None

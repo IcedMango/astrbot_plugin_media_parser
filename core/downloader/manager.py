@@ -26,7 +26,8 @@ class DownloadManager:
         large_video_threshold_mb: float = Config.DEFAULT_LARGE_VIDEO_THRESHOLD_MB,
         cache_dir: str = "/app/sharedFolder/video_parser/cache",
         pre_download_all_media: bool = False,
-        max_concurrent_downloads: int = None
+        max_concurrent_downloads: int = None,
+        download_retry_count: int = Config.DEFAULT_DOWNLOAD_RETRY_COUNT
     ):
         """初始化下载管理器
 
@@ -52,6 +53,7 @@ class DownloadManager:
             if max_concurrent_downloads is not None 
             else Config.DOWNLOAD_MANAGER_MAX_CONCURRENT
         )
+        self.download_retry_count = max(0, int(download_retry_count or 0))
         self.effective_pre_download = pre_download_all_media and check_cache_dir_available(cache_dir)
         
         self._active_tasks: set[asyncio.Task] = set()
@@ -94,10 +96,13 @@ class DownloadManager:
                 media_id='image',
                 index=img_idx,
                 headers=headers,
-                proxy=proxy
+                proxy=proxy,
+                retry_count=self.download_retry_count
             )
             if result and result.get('file_path'):
+                logger.debug(f"图片下载成功: {url}, index={img_idx}")
                 return result.get('file_path')
+            logger.warning(f"图片下载失败，尝试下一个候选URL: {url}, index={img_idx}")
         
         return None
 
@@ -455,6 +460,10 @@ class DownloadManager:
                         }
 
                     for url in url_list:
+                        logger.debug(
+                            f"开始下载媒体候选URL: {url}, index={index}, "
+                            f"candidates={len(url_list)}, retry_count={self.download_retry_count}"
+                        )
                         result = await download_media(
                             session,
                             url,
@@ -463,9 +472,13 @@ class DownloadManager:
                             media_id=media_id,
                             index=index,
                             headers=item_headers,
-                            proxy=item_proxy
+                            proxy=item_proxy,
+                            retry_count=self.download_retry_count
                         )
                         if result and result.get('file_path'):
+                            logger.debug(
+                                f"媒体下载成功: {url}, index={index}, file={result.get('file_path')}"
+                            )
                             return {
                                 'url': url_list[0],
                                 'file_path': result.get('file_path'),
@@ -473,6 +486,9 @@ class DownloadManager:
                                 'success': True,
                                 'index': index
                             }
+                        logger.warning(
+                            f"媒体下载失败，尝试下一个候选URL: {url}, index={index}"
+                        )
                     
                     return {
                         'url': url_list[0] if url_list else None,
@@ -824,4 +840,3 @@ class DownloadManager:
         if self._active_tasks:
             await asyncio.gather(*self._active_tasks, return_exceptions=True)
         self._active_tasks.clear()
-

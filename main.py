@@ -51,7 +51,8 @@ class VideoParserPlugin(Star):
             large_video_threshold_mb=self.config_manager.large_video_threshold_mb,
             cache_dir=self.config_manager.cache_dir,
             pre_download_all_media=self.config_manager.pre_download_all_media,
-            max_concurrent_downloads=self.config_manager.max_concurrent_downloads
+            max_concurrent_downloads=self.config_manager.max_concurrent_downloads,
+            download_retry_count=self.config_manager.download_retry_count
         )
         
         self.message_sender = MessageSender()
@@ -158,6 +159,51 @@ class VideoParserPlugin(Star):
                 return True
         return False
 
+    def _build_invalid_metadata_message(
+        self,
+        metadata_list: list[Dict[str, Any]]
+    ) -> str:
+        """为“解析后无有效媒体”场景构建用户可见提示。"""
+        if not metadata_list:
+            return "解析失败：未获得任何可用结果"
+
+        reason_lines = []
+        for idx, metadata in enumerate(metadata_list, start=1):
+            url = metadata.get("url") or metadata.get("source_url") or "未知链接"
+            reason = ""
+            if metadata.get("error"):
+                reason = f"解析失败：{metadata['error']}"
+            elif metadata.get("has_access_denied"):
+                reason = "解析失败：媒体访问被拒绝"
+            elif metadata.get("access_message"):
+                reason = str(metadata.get("access_message"))
+            else:
+                reason = "解析失败：未获取到可发送的媒体内容"
+
+            if len(metadata_list) == 1:
+                reason_lines.append(reason)
+                reason_lines.append(f"原始链接：{url}")
+            else:
+                reason_lines.append(f"[{idx}] {reason}")
+                reason_lines.append(f"链接：{url}")
+
+        return "\n".join(reason_lines)
+
+    def _serialize_metadata_for_debug(
+        self,
+        metadata: Dict[str, Any]
+    ) -> str:
+        """将元数据序列化为适合日志输出的 JSON。"""
+        try:
+            return json.dumps(
+                metadata,
+                ensure_ascii=False,
+                indent=2,
+                default=str
+            )
+        except Exception as e:
+            return f"<metadata serialization failed: {e}, raw={metadata!r}>"
+
 
     @filter.event_message_type(EventMessageType.ALL)
     async def auto_parse(self, event: AstrMessageEvent):
@@ -222,6 +268,11 @@ class VideoParserPlugin(Star):
             if not has_valid_metadata:
                 if self.config_manager.debug_mode:
                     self.logger.debug("解析后未获得任何有效元数据（可能是直播链接或解析失败）")
+                await event.send(
+                    event.plain_result(
+                        self._build_invalid_metadata_message(metadata_list)
+                    )
+                )
                 return
             
             if self.config_manager.enable_opening_msg:
@@ -236,6 +287,9 @@ class VideoParserPlugin(Star):
                         f"video_count={len(metadata.get('video_urls', []))}, "
                         f"image_count={len(metadata.get('image_urls', []))}, "
                         f"video_force_download={metadata.get('video_force_download')}"
+                    )
+                    self.logger.debug(
+                        f"元数据详情[{idx}]:\n{self._serialize_metadata_for_debug(metadata)}"
                     )
             
             async def process_single_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:

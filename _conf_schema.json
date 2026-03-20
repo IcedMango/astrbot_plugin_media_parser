@@ -322,6 +322,71 @@
             }
         }
     },
+    "telegram": {
+        "description": "Telegram 平台设置",
+        "type": "object",
+        "items": {
+            "send_media_group": {
+                "description": "图集使用媒体组发送",
+                "type": "bool",
+                "hint": "仅对 Telegram 平台的纯图片图集生效。启用后会使用原生 media group，相册会按最多 10 张一组拆分发送",
+                "default": false
+            },
+            "video_faststart": {
+                "description": "视频发送前重排 faststart",
+                "type": "bool",
+                "hint": "仅对 Telegram 平台的视频生效。启用后会尝试用 ffmpeg 重排 MP4 以改善在线播放兼容性，通常 CPU 开销较低",
+                "default": true
+            },
+            "video_transcode": {
+                "description": "视频发送前允许转码",
+                "type": "bool",
+                "hint": "仅对 Telegram 平台的视频生效。启用后会在编码或像素格式不兼容时转码为 H.264/AAC，提高在线播放成功率，但会显著占用 CPU",
+                "default": false
+            },
+            "transcode_settings": {
+                "description": "视频转码参数",
+                "type": "object",
+                "items": {
+                    "profile": {
+                        "description": "转码预设",
+                        "type": "string",
+                        "options": [
+                            "画质优先",
+                            "均衡",
+                            "速度"
+                        ],
+                        "hint": "画质优先更保真但更吃 CPU；速度最省 CPU 但压缩更明显；均衡为折中方案",
+                        "default": "均衡"
+                    }
+                }
+            },
+            "read_timeout": {
+                "description": "发送读取超时(秒)",
+                "type": "int",
+                "hint": "Telegram 发送媒体时等待服务端响应的读取超时，适合大文件上传场景",
+                "default": 900
+            },
+            "write_timeout": {
+                "description": "发送写入超时(秒)",
+                "type": "int",
+                "hint": "Telegram 发送媒体时本地向服务端上传请求体的写入超时",
+                "default": 900
+            },
+            "connect_timeout": {
+                "description": "发送连接超时(秒)",
+                "type": "int",
+                "hint": "Telegram 发送媒体时建立连接的超时",
+                "default": 30
+            },
+            "pool_timeout": {
+                "description": "连接池超时(秒)",
+                "type": "int",
+                "hint": "Telegram 发送媒体时等待连接池可用连接的超时",
+                "default": 30
+            }
+        }
+    },
     "debug": {
         "description": "是否启用Debug模式",
         "type": "bool",

@@ -29,6 +29,24 @@ BILIBILI_QUALITY_MAP = {
     "360P": 16,
 }
 
+TELEGRAM_TRANSCODE_PROFILES = {
+    "画质优先": {
+        "preset": "medium",
+        "crf": 20,
+        "audio_bitrate_kbps": 192,
+    },
+    "均衡": {
+        "preset": "veryfast",
+        "crf": 23,
+        "audio_bitrate_kbps": 128,
+    },
+    "速度": {
+        "preset": "superfast",
+        "crf": 26,
+        "audio_bitrate_kbps": 96,
+    },
+}
+
 
 class ConfigManager:
 
@@ -266,6 +284,50 @@ class ConfigManager:
         self.twitter_use_parse_proxy = twitter_proxy.get("parse", False)
         self.twitter_use_image_proxy = twitter_proxy.get("image", False)
         self.twitter_use_video_proxy = twitter_proxy.get("video", False)
+
+        telegram_settings = self._config.get("telegram", {})
+        if not isinstance(telegram_settings, dict):
+            telegram_settings = {}
+        self.telegram_send_media_group = bool(
+            telegram_settings.get("send_media_group", False)
+        )
+        self.telegram_video_faststart = bool(
+            telegram_settings.get("video_faststart", True)
+        )
+        self.telegram_video_transcode = bool(
+            telegram_settings.get("video_transcode", False)
+        )
+        transcode_settings = telegram_settings.get("transcode_settings", {})
+        if not isinstance(transcode_settings, dict):
+            transcode_settings = {}
+        profile = str(
+            transcode_settings.get("profile", "均衡") or "均衡"
+        ).strip()
+        if profile not in TELEGRAM_TRANSCODE_PROFILES:
+            logger.warning(
+                f"Telegram 转码预设非法，回退为均衡: {profile}"
+            )
+            profile = "均衡"
+        self.telegram_transcode_profile = profile
+        self.telegram_transcode_profile_config = TELEGRAM_TRANSCODE_PROFILES[
+            profile
+        ].copy()
+        self.telegram_read_timeout = self._parse_positive_int(
+            telegram_settings.get("read_timeout", 900),
+            900
+        )
+        self.telegram_write_timeout = self._parse_positive_int(
+            telegram_settings.get("write_timeout", 900),
+            900
+        )
+        self.telegram_connect_timeout = self._parse_positive_int(
+            telegram_settings.get("connect_timeout", 30),
+            30
+        )
+        self.telegram_pool_timeout = self._parse_positive_int(
+            telegram_settings.get("pool_timeout", 30),
+            30
+        )
         
         self.debug_mode = self._config.get("debug", False)
         if self.debug_mode:
@@ -305,6 +367,7 @@ class ConfigManager:
             seen.add(value_str)
             normalized.append(value_str)
         return normalized
+
 
     def _effective_hot_comment_count(self, enabled: bool) -> int:
         """根据开关状态返回实际生效的热评条数。"""
@@ -380,4 +443,3 @@ class ConfigManager:
             )
         
         return parsers
-

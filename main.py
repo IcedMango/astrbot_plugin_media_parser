@@ -55,7 +55,17 @@ class VideoParserPlugin(Star):
             download_retry_count=self.config_manager.download_retry_count
         )
         
-        self.message_sender = MessageSender()
+        self.message_sender = MessageSender(
+            telegram_send_media_group=self.config_manager.telegram_send_media_group,
+            telegram_video_faststart=self.config_manager.telegram_video_faststart,
+            telegram_video_transcode=self.config_manager.telegram_video_transcode,
+            telegram_transcode_profile=self.config_manager.telegram_transcode_profile,
+            telegram_transcode_profile_config=self.config_manager.telegram_transcode_profile_config,
+            telegram_read_timeout=self.config_manager.telegram_read_timeout,
+            telegram_write_timeout=self.config_manager.telegram_write_timeout,
+            telegram_connect_timeout=self.config_manager.telegram_connect_timeout,
+            telegram_pool_timeout=self.config_manager.telegram_pool_timeout
+        )
         self.admin_cookie_assist = BilibiliAdminCookieAssistManager(
             context=self.context,
             admin_id=self.config_manager.admin_id,
@@ -357,10 +367,17 @@ class VideoParserPlugin(Star):
                         self.logger.debug("未构建任何节点，跳过发送")
                     return
                 
+                effective_auto_pack = self.config_manager.is_auto_pack
+                if event.get_platform_name() == "telegram" and effective_auto_pack:
+                    self.logger.warning(
+                        "Telegram 平台不支持 Nodes 打包发送，自动降级为非打包发送"
+                    )
+                    effective_auto_pack = False
+
                 if self.config_manager.debug_mode:
-                    self.logger.debug(f"开始发送结果，打包模式: {self.config_manager.is_auto_pack}")
+                    self.logger.debug(f"开始发送结果，打包模式: {effective_auto_pack}")
                 
-                if self.config_manager.is_auto_pack:
+                if effective_auto_pack:
                     await self.message_sender.send_packed_results(
                         event,
                         link_metadata,
